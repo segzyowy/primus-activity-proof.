@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {classifyError, inspect, SOURCE, CONDITIONS} from '../verification.js';
+test('00104 is unmet, not a verified negative proof',()=>{assert.equal(classifyError({code:'00104'}).kind,'requirement-not-met');assert.match(classifyError({code:'00104'}).detail,/not a verified negative proof/);});
+test('message-only error classified',()=>assert.equal(classifyError(new Error('Verification requirements not met.')).kind,'requirement-not-met'));
+test('technical error remains technical',()=>assert.equal(classifyError(new Error('Network failure')).kind,'technical-error'));
+const now=1700000000000;
+const context={address:'0xabc',nonce:'test',submitted:{taskId:'7'}};
+const row=()=>({taskId:'7',attestation:{recipient:'0xabc',request:[{url:SOURCE}],attConditions:JSON.stringify(CONDITIONS),additionParams:JSON.stringify({nonce:'test',purpose:'activity-proof-demo'}),timestamp:now/1000}});
+test('binding pass does not award eligibility',()=>assert.match(inspect([row()],context,now),/Eligibility remains undecided/));
+test('empty results rejected',()=>assert.throws(()=>inspect([],context,now)));
+test('wrong recipient rejected',()=>{const r=row();r.attestation.recipient='0xdef';assert.throws(()=>inspect([r],context,now));});
+test('changed threshold rejected',()=>{const r=row();r.attestation.attConditions='[[{"field":"spotVolume30d","op":">","value":"0"}]]';assert.throws(()=>inspect([r],context,now));});
+test('stale result rejected',()=>assert.throws(()=>inspect([row()],context,now+1000000)));
+test('different session rejected',()=>assert.throws(()=>inspect([row()],{...context,nonce:'other'},now)));
