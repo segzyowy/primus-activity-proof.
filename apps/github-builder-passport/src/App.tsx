@@ -9,6 +9,7 @@ import {
   readGithubAttestedProfile,
   readPassportFromUrl,
   type GithubAttestedProfile,
+  type PrimusAttestedResult,
   type ShareablePassport
 } from "./verification";
 
@@ -36,6 +37,8 @@ type ProgressStatus =
   | "proof_generating"
   | "on_chain_attested"
   | "failed";
+
+type SharedVerification = "checking" | "verified" | "failed";
 
 function getEthereum(): EthereumProvider | undefined {
   return (window as Window & { ethereum?: EthereumProvider }).ethereum;
@@ -91,7 +94,73 @@ function shortAddress(value?: string): string {
 }
 
 function SharedPassportView({ passport }: { passport: ShareablePassport }) {
-  const profile = passport.profile;
+  const [verificationState, setVerificationState] = useState<SharedVerification>("checking");
+  const [verificationMessage, setVerificationMessage] = useState(
+    "Checking the proof reference with Primus. Keep the Primus extension enabled."
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const client = new BnbZkIdClient();
+        await client.init({ appId: APP_ID });
+        const result = await client.queryProofResult({
+          proofRequestId: passport.proofRequestId
+        });
+
+        if (result.status !== "on_chain_attested") {
+          throw new Error("Primus does not currently report this proof as on-chain attested.");
+        }
+        if (
+          result.providerId !== passport.providerId ||
+          result.identityPropertyId !== passport.identityPropertyId
+        ) {
+          throw new Error("The shared provider or identity property does not match the Primus proof result.");
+        }
+        if (
+          passport.walletAddress &&
+          result.walletAddress.toLowerCase() !== passport.walletAddress.toLowerCase()
+        ) {
+          throw new Error("The disclosed wallet address does not match the Primus proof result.");
+        }
+
+        if (passport.profile) {
+          const registryProfile = await readGithubAttestedProfile(result);
+          if (
+            registryProfile.accountEarliestYear !== passport.profile.accountEarliestYear ||
+            registryProfile.contributionsLastYear !== passport.profile.contributionsLastYear ||
+            registryProfile.registryTimestamp !== passport.profile.registryTimestamp ||
+            registryProfile.registry.toLowerCase() !== passport.profile.registry.toLowerCase() ||
+            registryProfile.chainId !== passport.profile.chainId
+          ) {
+            throw new Error("The shared profile fields do not match the current Primus registry payload.");
+          }
+        }
+
+        if (!cancelled) {
+          setVerificationState("verified");
+          setVerificationMessage("Primus confirmed the proof reference and the shared credential fields.");
+        }
+      } catch (verificationError) {
+        if (!cancelled) {
+          setVerificationState("failed");
+          setVerificationMessage(formatError(verificationError));
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [passport]);
+
+  const sealText =
+    verificationState === "verified"
+      ? "VERIFIED BY PRIMUS"
+      : verificationState === "checking"
+        ? "CHECKING PRIMUS PROOF"
+        : "NOT VERIFIED";
+
   return (
     <main className="page-shell share-shell">
       <header className="topbar">
@@ -99,13 +168,17 @@ function SharedPassportView({ passport }: { passport: ShareablePassport }) {
           <span className="brand-mark">P</span>
           <span>PRIMUS <b>BUILDER ID</b></span>
         </a>
-        <span className="network-pill"><i /> Primus attested</span>
+        <span className="network-pill"><i /> Primus proof lookup</span>
       </header>
       <section className="passport-card public-passport">
         <div className="passport-orbit">✳</div>
         <p className="eyebrow">VERIFIABLE DEVELOPER IDENTITY</p>
         <h1>GitHub Builder<br /><span>Passport</span></h1>
-        <div className="verified-seal"><span>✓</span><b>ON-CHAIN ATTESTED</b></div>
+        <div className={"verified-seal " + verificationState}>
+          <span>{verificationState === "verified" ? "✓" : verificationState === "checking" ? "…" : "!"}</span>
+          <b>{sealText}</b>
+        </div>
+        <div className={"passport-check-alert " + verificationState}>{verificationMessage}</div>
         <div className="credential-list">
           <div className="credential-row">
             <div><span className="credential-icon">GH</span></div>
@@ -113,25 +186,25 @@ function SharedPassportView({ passport }: { passport: ShareablePassport }) {
               <b>GitHub identity property</b>
               <small>{passport.identityPropertyId}</small>
             </div>
-            <span className="verified-tag">VERIFIED</span>
+            {verificationState === "verified" ? <span className="verified-tag">VERIFIED</span> : <span className="pending-tag">PENDING</span>}
           </div>
-          {profile ? (
+          {passport.profile ? (
             <>
               <div className="credential-row">
                 <div><span className="credential-icon">◷</span></div>
                 <div className="credential-copy">
                   <b>Account earliest year</b>
-                  <small>Read from the Primus-attested registry payload</small>
+                  <small>Included from the Primus registry payload</small>
                 </div>
-                <strong className="credential-value">{profile.accountEarliestYear}</strong>
+                <strong className="credential-value">{passport.profile.accountEarliestYear}</strong>
               </div>
               <div className="credential-row">
                 <div><span className="credential-icon">↗</span></div>
                 <div className="credential-copy">
                   <b>Contributions in last year</b>
-                  <small>Read from the Primus-attested registry payload</small>
+                  <small>Included from the Primus registry payload</small>
                 </div>
-                <strong className="credential-value">{profile.contributionsLastYear}</strong>
+                <strong className="credential-value">{passport.profile.contributionsLastYear}</strong>
               </div>
             </>
           ) : (
@@ -139,11 +212,11 @@ function SharedPassportView({ passport }: { passport: ShareablePassport }) {
           )}
         </div>
         <div className="passport-meta">
-          <div><small>PROOF REQUEST</small><b>{passport.proofRequestId || "Reference not supplied"}</b></div>
+          <div><small>PROOF REQUEST</small><b>{passport.proofRequestId}</b></div>
           <div><small>WALLET</small><b>{shortAddress(passport.walletAddress)}</b></div>
           <div><small>ISSUER</small><b>{passport.issuer}</b></div>
         </div>
-        <p className="fine-print">This page displays the credential data included by its owner. Check the proof reference with Primus before relying on it.</p>
+        <p className="fine-print">The verification badge appears only after this page checks the proof reference with Primus. Keep the Primus extension enabled to verify a shared passport.</p>
       </section>
       <p className="share-footer">Powered by Primus zkTLS · BNB ZKID</p>
     </main>
@@ -294,6 +367,10 @@ export default function App() {
 
   async function sharePassport() {
     if (!proof || proof.status !== "on_chain_attested") return;
+    if (!proof.proofRequestId) {
+      setError("Primus did not return a proof request ID. This result cannot be independently checked by a recipient, so a shareable passport was not created.");
+      return;
+    }
 
     const passport: ShareablePassport = {
       version: 1,
@@ -310,7 +387,7 @@ export default function App() {
 
     try {
       await navigator.clipboard.writeText(makePassportUrl(passport));
-      setShareMessage("Passport link copied. Only the selected fields are included.");
+      setShareMessage("Passport link copied. Recipients must check the proof with Primus before relying on its claims.");
     } catch {
       setError("Clipboard access failed. Open this application over HTTPS and try again.");
     }
@@ -471,7 +548,8 @@ export default function App() {
                 <p className="eyebrow">SELECTIVE SHARING</p>
                 <label className="check-row"><input type="checkbox" checked={includeProfile} onChange={(event) => setIncludeProfile(event.target.checked)} disabled={!profile} /><span><b>Include decoded GitHub profile fields</b><small>Account year and last-year contribution figure</small></span></label>
                 <label className="check-row"><input type="checkbox" checked={includeWallet} onChange={(event) => setIncludeWallet(event.target.checked)} /><span><b>Include wallet address</b><small>Off by default; wallet addresses may be publicly linkable</small></span></label>
-                <button className="button button-primary full-button" onClick={sharePassport}>Copy shareable Builder Passport <span>↗</span></button>
+                <button className="button button-primary full-button" onClick={sharePassport} disabled={!proof.proofRequestId}>Copy shareable Builder Passport <span>↗</span></button>
+                {!proof.proofRequestId && <p className="share-warning">Primus did not return a proof reference, so independent sharing is disabled.</p>}
                 {shareMessage && <p className="share-success">{shareMessage}</p>}
               </div>
             </article>
