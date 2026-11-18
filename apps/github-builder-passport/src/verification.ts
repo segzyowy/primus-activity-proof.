@@ -56,7 +56,10 @@ export type GithubAttestedProfile = {
 export function identityPropertyToBytes32(identityPropertyId: string): Hex {
   const key = identityPropertyId.trim();
   if (isHex(key, { strict: true }) && key.length === 66) {
-    return key.toLowerCase() as Hex;
+    if (key.toLowerCase() === GITHUB_IDENTITY_PROPERTY_HEX) {
+      return GITHUB_IDENTITY_PROPERTY_HEX;
+    }
+    throw new Error("Primus returned a GitHub property without a reviewed decoder. Its proof reference can be shared, but no profile figures will be inferred.");
   }
   const mapped = IDENTITY_PROPERTY_BY_GATEWAY_ID[key];
   if (!mapped) {
