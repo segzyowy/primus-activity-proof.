@@ -10,8 +10,8 @@ A mobile-friendly GitHub credential passport powered by the official Primus BNB 
 - Re-checks the selected GitHub property immediately before proving; no guessed property ID is submitted.
 - Primus proof progress, failure handling and on-chain attestation reference.
 - Optional read of the GitHub identity payload from the published BNB Smart Chain testnet demo registry.
-- Shareable passport URL with selective inclusion of decoded profile data and an optional wallet address.
-- Public passport page rendered from the fields embedded in its share URL.
+- Shareable passport URL with selective inclusion of decoded fields and an optional wallet address.
+- Shared passports query Primus by proof request ID and compare provider/property. If profile fields are shared, recipients also re-read the registry and compare the included values before the page displays a verified badge.
 
 ## Run locally
 
@@ -26,7 +26,7 @@ Requirements: Node.js 20+, npm, MetaMask, and the Primus browser extension.
 
 4. Open the Vite URL (normally http://localhost:5173).
 5. Connect MetaMask, discover live GitHub properties, select one, then run verification.
-6. Approve the Primus extension's verification flow.
+6. Approve the Primus extension verification flow.
 
 ## App ID
 
@@ -44,8 +44,11 @@ The live provider list is authoritative. If the configured App ID does not expos
 - The browser's GitHub session is used only inside the official Primus extension/source-verification flow.
 - The app calls \`BnbZkIdClient.init()\` and \`BnbZkIdClient.prove()\` from \`@primuslabs/bnb-zkid-sdk\`.
 - A result is eligible for the passport only when the SDK returns \`status: "on_chain_attested"\`.
+- The app does not submit a guessed property ID. It discovers available GitHub property IDs from the live provider configuration and rechecks them immediately before proof generation.
 - Numeric GitHub profile fields are shown only when the associated registry payload is successfully read and decoded using the GitHub profile schema demonstrated by Primus's official SDK demo.
 - If the SDK attests but the app cannot read or decode the registry data, the attestation reference is still shown, but no invented numbers are displayed.
+- Shared passport pages call \`queryProofResult()\` and compare the actual Primus result to the shared provider and property. Included profile values are checked against a fresh testnet registry read. A client-side URL payload alone is never treated as proof.
+- Shared passport verification requires the Primus extension because the SDK initialization checks for it.
 - The share URL is a presentation/transport format, not a standalone cryptographic verifier. Recipients should check the proof reference with Primus before relying on the claims.
 
 ## Registry read
