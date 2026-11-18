@@ -1,0 +1,33 @@
+name: GitHub Builder Passport
+
+on:
+  push:
+    branches:
+      - feature/github-builder-passport
+    paths:
+      - "apps/github-builder-passport/**"
+      - ".github/workflows/github-builder-passport.yml"
+  pull_request:
+    paths:
+      - "apps/github-builder-passport/**"
+      - ".github/workflows/github-builder-passport.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/github-builder-passport
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install
+      - name: Type-check
+        run: npm run typecheck
+      - name: Build production bundle
+        run: npm run build
