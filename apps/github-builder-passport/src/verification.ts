@@ -10,7 +10,6 @@ import {
   type Hex
 } from "viem";
 import { bscTestnet } from "viem/chains";
-import type { ProveSuccessResult } from "@primuslabs/bnb-zkid-sdk";
 
 const GITHUB_IDENTITY_PROPERTY_HEX =
   "0x0e5adf3535913ff915e7f062801a0f3a165711cb26709ec9574a9c45e091c7ff" as Hex;
@@ -37,6 +36,14 @@ const REGISTRY_ABI = [
     ]
   }
 ] as const;
+
+export type PrimusAttestedResult = {
+  status: "on_chain_attested";
+  walletAddress: string;
+  providerId: string;
+  identityPropertyId: string;
+  proofRequestId?: string;
+};
 
 export type GithubAttestedProfile = {
   accountEarliestYear: string;
@@ -134,11 +141,11 @@ function decodeGithubProfileBlob(dataBlob: Hex): { accountEarliestYear: string; 
 }
 
 /**
- * Reads the registry record created by the successful Primus BNB ZKID proof.
- * This read is intentionally restricted to the documented BNB testnet demo registry.
+ * Reads the registry record tied to a successful Primus BNB ZKID result.
+ * This implementation targets the documented BNB testnet demo registry only.
  */
 export async function readGithubAttestedProfile(
-  proof: ProveSuccessResult
+  proof: PrimusAttestedResult
 ): Promise<GithubAttestedProfile> {
   if (proof.status !== "on_chain_attested") {
     throw new Error("A profile can only be read after Primus reports on-chain attestation.");
@@ -181,17 +188,11 @@ export type ShareablePassport = {
   title: "GitHub Builder Passport";
   status: "on_chain_attested";
   issuedAt: string;
-  proofRequestId?: string;
+  proofRequestId: string;
   providerId: string;
   identityPropertyId: string;
   walletAddress?: string;
-  profile?: {
-    accountEarliestYear: string;
-    contributionsLastYear: string;
-    registryTimestamp: string;
-    registry: string;
-    chainId: number;
-  };
+  profile?: GithubAttestedProfile;
 };
 
 function encodeBase64Utf8(value: string): string {
@@ -226,6 +227,8 @@ export function readPassportFromUrl(): ShareablePassport | null {
       value.issuer !== "Primus BNB ZKID" ||
       value.status !== "on_chain_attested" ||
       value.title !== "GitHub Builder Passport" ||
+      typeof value.proofRequestId !== "string" ||
+      value.proofRequestId.trim().length === 0 ||
       typeof value.providerId !== "string" ||
       typeof value.identityPropertyId !== "string"
     ) return null;
